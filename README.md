@@ -277,3 +277,125 @@ namespace WpfApp1
     </Grid>
 </Window>
 
+
+машинка
+
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+from sklearn.datasets import load_iris
+from sklearn.preprocessing import StandardScaler
+
+iris = load_iris()
+X = iris.data
+features = ['Длина чашелистика', 'Ширина чашелистика', 'Длина лепестка', 'Ширина лепестка']
+
+# Масштабируем данные
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+
+# Реализация KMeans
+def my_kmeans(X, k, max_iters=100, plot_each_step=False):
+    np.random.seed()
+    centroids = X[np.random.choice(X.shape[0], k, replace=False)]
+
+    for it in range(max_iters):
+        # Расчет расстояний и присвоение меток
+        distances = np.linalg.norm(X[:, np.newaxis] - centroids, axis=2)
+        labels = np.argmin(distances, axis=1)
+
+        # Визуализация (если требуется)
+        if plot_each_step:
+            visualize_clusters(X, labels, centroids, it)
+
+        # Обновление центроидов
+        new_centroids = np.array([
+            X[labels == i].mean(axis=0) if len(X[labels == i]) > 0 else centroids[i]
+            for i in range(k)
+        ])
+
+        # Проверка на сходимость
+        if np.allclose(centroids, new_centroids):
+            break
+        centroids = new_centroids
+
+    return labels, centroids
+
+
+def visualize_clusters(X, labels, centroids, iteration):
+
+    plt.figure(figsize=(6, 5))
+    for i in np.unique(labels):
+        cluster = X[labels == i]
+        plt.scatter(cluster[:, 0], cluster[:, 1], label=f'Кластер {i}')
+    plt.scatter(centroids[:, 0], centroids[:, 1], color='black', marker='x', s=200, label='Центроиды')
+    plt.title(f'Итерация {iteration + 1}')
+    plt.xlabel('Признак 1 (норм.)')
+    plt.ylabel('Признак 2 (норм.)')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+
+def calculate_wcss(X, k_range):
+    #Вычисляет WCSS для различных значений k
+    wcss = []
+    for k in k_range:
+        labels, centroids = my_kmeans(X, k, plot_each_step=False)
+        sse = sum(np.sum((X[labels == i] - centroids[i]) ** 2) for i in range(k))
+        wcss.append(sse)
+    return wcss
+
+
+# Определяем диапазон k и вычисляем WCSS
+k_values = list(range(1, 11))
+wcss_values = calculate_wcss(X_scaled, k_values)
+
+# Определяем оптимальное количество кластеров
+threshold = 0.1
+optimal_k = 1
+for i in range(1, len(wcss_values)):
+    drop = (wcss_values[i - 1] - wcss_values[i]) / wcss_values[i - 1]
+    if drop < threshold:
+        optimal_k = i
+        break
+else:
+    optimal_k = k_values[-1]
+
+print(f"\nОптимальное количество кластеров: {optimal_k}")
+
+# метод локтя
+plt.figure(figsize=(8, 5))
+plt.plot(k_values, wcss_values, marker='o')
+plt.title('Метод локтя для выбора оптимального количества кластеров')
+plt.xlabel('Количество кластеров k')
+plt.ylabel('WCSS')
+plt.grid(True)
+plt.show()
+
+# Финальный запуск KMeans с визуализацией
+labels, centroids = my_kmeans(X_scaled, optimal_k, plot_each_step=True)
+
+# Построим pairplot со всеми попарными проекциями
+df = pd.DataFrame(X_scaled, columns=features)
+df['Кластер'] = labels
+
+# Уникальные пары признаков для визуализации
+pairs = [
+    ("Длина чашелистика", "Ширина чашелистика"),
+    ("Длина чашелистика", "Длина лепестка"),
+    ("Длина чашелистика", "Ширина лепестка"),
+    ("Ширина чашелистика", "Длина лепестка"),
+    ("Ширина чашелистика", "Ширина лепестка"),
+    ("Длина лепестка", "Ширина лепестка"),
+]
+
+# Визуализация пар признаков
+for x, y in pairs:
+    plt.figure(figsize=(6, 5))
+    sns.scatterplot(data=df, x=x, y=y, hue='Кластер', palette='Set1')
+    plt.title(f'{x} vs {y}')
+    plt.grid(True)
+    plt.show()
